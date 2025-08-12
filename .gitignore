@@ -1,0 +1,27 @@
+# Entorno virtual
+GRAFICOS/.venv/
+.venv/
+venv/
+
+# Archivos temporales de Excel (bloqueo)
+~$*.xls*
+INFORME BANCOS/SALDO BANCOS/~$*.xls*
+BALANCE DETALLADO/DOCUMENTOS/~$*.xls*
+
+# Archivos compilados Python
+__pycache__/
+*.py[cod]
+
+# Configuración local / sistemas
+.DS_Store
+Thumbs.db
+
+# Archivos temporales / logs
+*.log
+*.tmp
+
+# Jupyter/Dash caches
+.ipynb_checkpoints/
+
+# VSCode
+.vscode/
