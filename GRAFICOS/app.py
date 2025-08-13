@@ -2,7 +2,7 @@ from dash import Dash, dcc, html, Input, Output
 import grafic_bancos
 import cuadro_banc
 
-app = Dash(__name__)
+app = Dash(__name__, suppress_callback_exceptions=True)
 app.title = 'Dashboard Bancos'
 
 TAB_CONTENT = {
