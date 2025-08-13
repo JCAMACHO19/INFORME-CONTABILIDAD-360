@@ -14,55 +14,78 @@ if not SALDO_BANCOS_DIR.exists():
 # ------------------ Carga de datos ------------------
 
 def cargar_datos() -> pd.DataFrame:
-    """Carga y normaliza datos incluyendo Saldo Inicial y Saldo Libros.
-    Retorna columnas: Empresa, Fecha (datetime), Saldo Inicial, Saldo Libros"""
+    """Carga y normaliza datos incluyendo Saldo Libros y Banco.
+    Retorna columnas: Empresa, Fecha (datetime), Banco, Saldo Libros, Saldo Inicial (opcional)."""
     archivos = [f for f in SALDO_BANCOS_DIR.glob('*.xlsx') if not f.name.startswith('~$')]
     if not archivos:
-        return pd.DataFrame(columns=['Empresa', 'Fecha', 'Saldo Inicial', 'Saldo Libros'])
+        return pd.DataFrame(columns=['Empresa', 'Fecha', 'Banco', 'Saldo Libros', 'Saldo Inicial'])
     frames = []
     for f in archivos:
         try:
             df = pd.read_excel(f, dtype=str)
-            columnas_map = {c.lower().strip(): c for c in df.columns}
-            col_empresa = columnas_map.get('empresa')
-            col_fecha = columnas_map.get('fecha')
-            posibles_inicial = [k for k in columnas_map.keys() if k.replace(' ', '') in ('saldoinicial','saldo_inicial')]
-            col_saldo_inicial = columnas_map.get('saldo inicial') or columnas_map.get('saldoinicial')
-            if not col_saldo_inicial and posibles_inicial:
-                col_saldo_inicial = columnas_map[posibles_inicial[0]]
+            col_empresa = None
+            col_fecha = None
             col_saldo_libros = None
+            col_saldo_inicial = None
+            col_banco = None
+            col_cuenta = None
             for c in df.columns:
-                if c.strip().lower() == 'saldo libros':
+                key = c.strip().lower().replace('\u00a0','')
+                if key == 'empresa':
+                    col_empresa = c
+                elif key == 'fecha':
+                    col_fecha = c
+                elif key in ('saldo libros','saldolibros','saldo_libros'):
                     col_saldo_libros = c
-                    break
-            if not (col_empresa and col_fecha and col_saldo_inicial and col_saldo_libros):
+                elif key in ('saldo inicial','saldoinicial','saldo_inicial'):
+                    col_saldo_inicial = c
+                elif key in ('banco','nombrebanco','nombre banco','cuenta bancaria','cuentabancaria') and col_banco is None:
+                    col_banco = c
+                elif key in ('cuenta','cuenta bancaria','cuentabanco','cuentabancaria','nombre cuenta') and col_cuenta is None:
+                    col_cuenta = c
+            if not (col_empresa and col_fecha and col_saldo_libros):
                 continue
-            sub = df[[col_empresa, col_fecha, col_saldo_inicial, col_saldo_libros]].rename(columns={
+            if not col_banco:
+                # Si no hay banco, crear una columna default
+                df['__BancoTmp__'] = 'Sin Banco'
+                col_banco = '__BancoTmp__'
+            cols_select = [col_empresa, col_fecha, col_banco, col_saldo_libros] + ([col_saldo_inicial] if col_saldo_inicial else []) + ([col_cuenta] if col_cuenta else [])
+            sub = df[cols_select].rename(columns={
                 col_empresa: 'Empresa',
                 col_fecha: 'Fecha',
-                col_saldo_inicial: 'Saldo Inicial',
-                col_saldo_libros: 'Saldo Libros'
+                col_banco: 'Banco',
+                col_saldo_libros: 'Saldo Libros',
+                **({col_saldo_inicial: 'Saldo Inicial'} if col_saldo_inicial else {}),
+                **({col_cuenta: 'Cuenta'} if col_cuenta else {})
             })
-            for cnum in ['Saldo Inicial', 'Saldo Libros']:
+            # Limpieza numérica
+            for cnum in [c for c in ['Saldo Libros','Saldo Inicial'] if c in sub.columns]:
                 sub[cnum] = (sub[cnum].astype(str)
-                                  .str.strip()
-                                  .str.replace('\u00a0','', regex=False)
-                                  .str.replace(',', '.', regex=False))
+                                    .str.strip()
+                                    .str.replace('\u00a0','', regex=False)
+                                    .str.replace(',', '.', regex=False))
                 sub[cnum] = pd.to_numeric(sub[cnum], errors='coerce')
-            # Asegurar floats
-            for cnum in ['Saldo Inicial','Saldo Libros']:
                 sub[cnum] = sub[cnum].astype(float)
             sub['Fecha'] = pd.to_datetime(sub['Fecha'], dayfirst=True, errors='coerce')
-            sub.dropna(subset=['Fecha', 'Saldo Libros', 'Saldo Inicial'], inplace=True)
-            frames.append(sub)
+            sub.dropna(subset=['Fecha', 'Saldo Libros'], inplace=True)
+            # Filtrar cuentas que contengan 'CXP'
+            if 'Cuenta' in sub.columns:
+                sub = sub[~sub['Cuenta'].str.contains('CXP', case=False, na=False)]
+            if sub.empty:
+                continue
+            frames.append(sub[['Empresa','Fecha','Banco'] + ([ 'Saldo Inicial'] if 'Saldo Inicial' in sub.columns else []) + ['Saldo Libros']])
         except Exception as e:
             print(f'⚠️ Error leyendo {f.name}: {e}')
     if not frames:
-        return pd.DataFrame(columns=['Empresa', 'Fecha', 'Saldo Inicial', 'Saldo Libros'])
+        return pd.DataFrame(columns=['Empresa', 'Fecha', 'Banco', 'Saldo Libros', 'Saldo Inicial'])
     data = pd.concat(frames, ignore_index=True)
-    data = (data.groupby(['Empresa', 'Fecha'], as_index=False)
-                 .agg({'Saldo Inicial': 'sum', 'Saldo Libros': 'sum'}))
-    data.sort_values(['Fecha', 'Empresa'], inplace=True)
+    # Agregar sumas por Empresa, Fecha, Banco
+    agg_cols = {'Saldo Libros':'sum'}
+    if 'Saldo Inicial' in data.columns:
+        agg_cols['Saldo Inicial'] = 'sum'
+    data = (data.groupby(['Empresa','Fecha','Banco'], as_index=False)
+                 .agg(agg_cols))
+    data.sort_values(['Fecha','Empresa','Banco'], inplace=True)
     return data
 
 # ------------------ Layout ------------------
@@ -71,9 +94,25 @@ def layout():
     df = cargar_datos()
     empresas = sorted(df['Empresa'].dropna().unique()) if not df.empty else []
     fechas = sorted(df['Fecha'].dt.date.unique()) if not df.empty else []
+    bancos = sorted(df['Banco'].dropna().unique()) if (not df.empty and 'Banco' in df.columns) else []
+    # Formateo amigable en español: 'DD de mes de YYYY'
+    meses_es = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+    def fecha_es(d):
+        return f"{d.day} de {meses_es[d.month-1]} de {d.year}"
+    fecha_default = fechas[-1].strftime('%Y-%m-%d') if fechas else None
     return html.Div([
-        html.H2('Saldo Inicial vs Saldo Libros'),
+        html.H2('Distribución Saldo Libros por Empresa y Banco', style={'marginBottom':'8px'}),
         html.Div([
+            html.Div([
+                html.Label('Fecha (única)'),
+                dcc.Dropdown(
+                    id='fecha-dropdown',
+                    options=[{'label': fecha_es(f), 'value': f.strftime('%Y-%m-%d')} for f in fechas],
+                    value=fecha_default,
+                    clearable=False,
+                    placeholder='Seleccione fecha'
+                )
+            ], style={'flex':1,'minWidth':'170px','marginRight':'12px'}),
             html.Div([
                 html.Label('Empresas'),
                 dcc.Dropdown(
@@ -81,26 +120,26 @@ def layout():
                     options=[{'label': e, 'value': e} for e in empresas],
                     value=empresas,
                     multi=True,
-                    placeholder='Seleccione empresas'
+                    placeholder='Empresas'
                 )
-            ], style={'flex':1, 'minWidth':'250px','marginRight':'12px'}),
+            ], style={'flex':2,'minWidth':'250px','marginRight':'12px'}),
             html.Div([
-                html.Label('Fechas'),
+                html.Label('Bancos'),
                 dcc.Dropdown(
-                    id='fecha-dropdown',
-                    options=[{'label': f.strftime('%Y-%m-%d'), 'value': f.strftime('%Y-%m-%d')} for f in fechas],
-                    value=[f.strftime('%Y-%m-%d') for f in fechas],
+                    id='banco-dropdown',
+                    options=[{'label': b, 'value': b} for b in bancos],
+                    value=bancos,
                     multi=True,
-                    placeholder='Seleccione fechas'
+                    placeholder='Bancos'
                 )
-            ], style={'flex':1, 'minWidth':'250px'}),
+            ], style={'flex':2,'minWidth':'250px','marginRight':'12px'}),
             html.Div([
-                html.Button('Actualizar datos', id='refresh-btn', n_clicks=0, style={'marginTop': '22px'})
+                html.Button('Actualizar datos', id='refresh-btn', n_clicks=0, style={'marginTop':'22px'})
             ])
-        ], style={'display':'flex','flexWrap':'wrap','gap':'12px','maxWidth':'900px'}),
-        dcc.Loading(dcc.Graph(id='grafico-barras-apiladas')),
+        ], style={'display':'flex','flexWrap':'wrap','gap':'10px','maxWidth':'1200px','alignItems':'flex-start','marginBottom':'10px'}),
+        dcc.Loading(dcc.Graph(id='grafico-bancos-stacked', style={'height':'620px'}), type='dot'),
         dcc.Store(id='data-store'),
-    ], style={'fontFamily': 'Arial', 'padding': '18px'})
+    ], style={'fontFamily': 'Arial', 'padding': '18px','backgroundColor':'#fafbfc'})
 
 # ------------------ Registro de callbacks ------------------
 
@@ -115,50 +154,79 @@ def register(app):
         return df.to_json(date_format='iso', orient='split')
 
     @app.callback(
-        Output('grafico-barras-apiladas', 'figure'),
+        Output('grafico-bancos-stacked', 'figure'),
         Input('data-store', 'data'),
+        Input('fecha-dropdown', 'value'),
         Input('empresa-dropdown', 'value'),
-        Input('fecha-dropdown', 'value')
+        Input('banco-dropdown', 'value')
     )
-    def actualizar_barras(data_json, empresas_sel, fechas_sel):
+    def actualizar_barras(data_json, fecha_sel, empresas_sel, bancos_sel):
         if not data_json:
             return px.bar(title='Sin datos disponibles')
         df = pd.read_json(data_json, orient='split')
         if 'Fecha' in df.columns:
             df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
         df = df.dropna(subset=['Fecha'])
+        # Filtro fecha única
+        if fecha_sel:
+            try:
+                fecha_dt = pd.to_datetime([fecha_sel], errors='coerce')[0]
+                df = df[df['Fecha'].dt.normalize() == fecha_dt.normalize()]
+            except Exception:
+                pass
+        # Filtro empresas
         if empresas_sel:
             df = df[df['Empresa'].isin(empresas_sel)]
-        if fechas_sel:
-            fechas_dt = pd.to_datetime(fechas_sel, errors='coerce')
-            fechas_dt = fechas_dt[~pd.isna(fechas_dt)].normalize()
-            if len(fechas_dt) > 0:
-                df = df[df['Fecha'].dt.normalize().isin(fechas_dt)]
+        # Filtro bancos
+        if bancos_sel and 'Banco' in df.columns:
+            df = df[df['Banco'].isin(bancos_sel)]
         if df.empty:
-            return px.bar(title='Sin datos para los filtros')
-        df['Variacion %'] = ((df['Saldo Libros'] - df['Saldo Inicial']) / df['Saldo Inicial'].replace({0: pd.NA})) * 100
-        df['Variacion %'] = df['Variacion %'].fillna(0)
-        long_df = df.melt(id_vars=['Empresa', 'Fecha', 'Variacion %'], value_vars=['Saldo Inicial', 'Saldo Libros'],
-                          var_name='Tipo', value_name='Valor')
-        long_df['Etiqueta'] = long_df['Empresa'] + ' | ' + long_df['Fecha'].dt.strftime('%Y-%m-%d')
-        long_df.sort_values(['Fecha','Empresa','Tipo'], inplace=True)
-        fig = px.bar(long_df, x='Etiqueta', y='Valor', color='Tipo', barmode='stack',
-                     color_discrete_map={'Saldo Inicial':'#1f77b4','Saldo Libros':'#ff7f0e'},
-                     title='Saldo Inicial vs Saldo Libros (Barras Apiladas)')
-        agreg = long_df.pivot_table(index='Etiqueta', columns='Tipo', values='Valor', aggfunc='sum').fillna(0)
-        variaciones = (df[['Empresa','Fecha','Variacion %']]
-                       .drop_duplicates()
-                       .assign(Etiqueta=lambda d: d['Empresa'] + ' | ' + d['Fecha'].dt.strftime('%Y-%m-%d'))
-                       .set_index('Etiqueta'))
-        for etiqueta, row in agreg.iterrows():
-            total = row.get('Saldo Inicial',0) + row.get('Saldo Libros',0)
-            var_pct = variaciones.loc[etiqueta, 'Variacion %'] if etiqueta in variaciones.index else 0
-            texto = f"{var_pct:.1f}%"
-            fig.add_annotation(x=etiqueta, y=total, text=texto,
-                               showarrow=False, yshift=4, font=dict(size=11,color='#222'))
-        fig.update_layout(xaxis_title='Empresa | Fecha', yaxis_title='Valor', legend_title='Tipo',
-                          hovermode='x unified', bargap=0.25)
-        fig.update_traces(hovertemplate='%{x}<br>%{fullData.name}: %{y:,.2f}<extra></extra>')
+            return px.bar(title='Sin datos tras filtros')
+        # Agrupar para gráfico
+        grp = (df.groupby(['Empresa','Banco'], as_index=False)
+                 .agg({'Saldo Libros':'sum'}))
+        # Ordenar empresas por total descendente
+        totales = grp.groupby('Empresa')['Saldo Libros'].sum().sort_values(ascending=False)
+        orden_empresas = list(totales.index)
+        grp['Empresa'] = pd.Categorical(grp['Empresa'], categories=orden_empresas, ordered=True)
+        # Calcular porcentaje dentro de empresa
+        grp['% Empresa'] = grp['Saldo Libros'] / grp.groupby('Empresa')['Saldo Libros'].transform('sum') * 100
+        # Etiquetas internas: mostrar solo si el segmento tiene suficiente porcentaje
+        PCT_LABEL_MIN = 7.0  # umbral mínimo en % para mostrar texto dentro
+        grp['LabelPct'] = grp['% Empresa'].apply(lambda v: f"{v:.1f}%" if pd.notna(v) and v >= PCT_LABEL_MIN else '')
+        palette = px.colors.qualitative.Safe + px.colors.qualitative.Set2 + px.colors.qualitative.Pastel
+        # Formatear fecha seleccionada para el título
+        meses_es = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+        titulo_fecha = None
+        try:
+            if fecha_sel:
+                fdt = pd.to_datetime([fecha_sel])[0]
+                titulo_fecha = f"{fdt.day} de {meses_es[fdt.month-1]} de {fdt.year}"
+        except Exception:
+            titulo_fecha = fecha_sel
+        fig = px.bar(grp, x='Empresa', y='Saldo Libros', color='Banco', barmode='stack', text='LabelPct',
+                     title=f"Saldo Libros por Empresa y Banco ({titulo_fecha})" if titulo_fecha else 'Saldo Libros por Empresa y Banco',
+                     color_discrete_sequence=palette)
+        # Hover personalizado
+        fig.update_traces(hovertemplate=('Empresa: %{x}<br>Banco: %{fullData.name}<br>'
+                                         'Saldo Libros: %{y:,.2f}<br>Participación: %{customdata[0]:.1f}%<extra></extra>'),
+                          customdata=grp[['% Empresa']].to_numpy(),
+                          textposition='inside',
+                          textfont=dict(color='#ffffff', size=11))
+        # Añadir totales sobre cada barra
+        tot_por_emp = grp.groupby('Empresa')['Saldo Libros'].sum()
+        for emp, total in tot_por_emp.items():
+            fig.add_annotation(x=emp, y=total, text=f"{total:,.2f}", showarrow=False,
+                               yshift=5, font=dict(size=11,color='#222'))
+        fig.update_layout(
+            xaxis_title='Empresa', yaxis_title='Saldo Libros', legend_title='Banco',
+            hovermode='x unified', bargap=0.25,
+            plot_bgcolor='#ffffff', paper_bgcolor='#fafbfc',
+            font=dict(family='Arial', size=12, color='#222'),
+            legend=dict(borderwidth=0, itemclick='toggleothers', orientation='h', yanchor='bottom', y=1.02, x=0)
+        )
+        fig.update_xaxes(showgrid=False, linecolor='#d0d7de')
+        fig.update_yaxes(showgrid=True, gridcolor='#eef2f5', zerolinecolor='#d0d7de')
         return fig
 
 __all__ = ["layout", "register"]

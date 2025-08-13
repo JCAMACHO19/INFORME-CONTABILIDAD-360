@@ -252,7 +252,7 @@ def layout():
             columns=[
                 {'name':'Cuenta','id':'Cuenta'},
                 ({'name':'Saldo Inicial','id':'Saldo Inicial','type':'numeric','format':NUM_FORMAT} if NUM_FORMAT else {'name':'Saldo Inicial','id':'Saldo Inicial'}),
-                ({'name':'Adiciones','id':'Adiciones','type':'numeric','format':NUM_FORMAT} if NUM_FORMAT else {'name':'Adiciones','id':'Adiciones'}),
+                ({'name':'Entradas','id':'Adiciones','type':'numeric','format':NUM_FORMAT} if NUM_FORMAT else {'name':'Entradas','id':'Adiciones'}),
                 ({'name':'Salidas','id':'Salidas','type':'numeric','format':NUM_FORMAT} if NUM_FORMAT else {'name':'Salidas','id':'Salidas'}),
                 ({'name':'Movimientos','id':'Movimientos','type':'numeric','format':NUM_FORMAT} if NUM_FORMAT else {'name':'Movimientos','id':'Movimientos'}),
                 ({'name':'Variacion %','id':'Variacion','type':'numeric','format':NUM_FORMAT} if NUM_FORMAT else {'name':'Variacion %','id':'Variacion'}),
