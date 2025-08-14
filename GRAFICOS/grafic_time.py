@@ -5,6 +5,7 @@ from dash import dcc, html, Input, Output
 import plotly.express as px
 import plotly.graph_objects as go
 import cuadro_banc
+import etiqueta_grafic_time as egd
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -61,7 +62,10 @@ def layout():
                 html.Button('Actualizar datos', id='gt-refresh-btn', n_clicks=0, style={'marginTop':'22px'})
             ])
         ], style={'display':'flex','flexWrap':'wrap','gap':'10px','maxWidth':'1200px','alignItems':'flex-start','marginBottom':'10px'}),
-        dcc.Loading(dcc.Graph(id='grafico-time', style={'height':'620px'}), type='dot'),
+        html.Div([
+            html.Div(dcc.Loading(dcc.Graph(id='grafico-time', style={'height':'620px'}), type='dot'), style={'flex':'3', 'minWidth':'600px'}),
+            egd.layout()
+        ], style={'display':'flex','flexDirection':'row','gap':'8px'}),
         dcc.Store(id='gt-data')
     ], style={'fontFamily':'Arial','padding':'18px'})
 
@@ -143,14 +147,15 @@ def register(app):
                 if dfe.empty:
                     continue
                 fig.add_bar(
-                    name=f"{emp} - Inicial",
+                    name=f"Saldo Inicial {emp}",
                     x=dfe['PeriodoIni'],
                     y=dfe['Saldo Inicial'],
                     marker_color=color_map[emp],
                     opacity=0.55,
                     offsetgroup='inicial',
-                    legendgroup=f"{emp}-inicial",
-                    hovertemplate='Periodo: %{x}<br>Empresa: %{fullData.name}<br>Saldo Inicial: %{y:,.2f}<extra></extra>'
+                    legendgroup='Saldo Inicial',
+                    legendgrouptitle_text=('Saldo Inicial' if emp == empresas[0] else None),
+                    hovertemplate='Periodo: %{x}<br>Empresa: %{x}<br>Saldo Inicial: %{y:,.2f}<extra></extra>'
                 )
         # Serie 2: Saldo Libros por periodo (después)
         if not grp_lib.empty:
@@ -159,14 +164,15 @@ def register(app):
                 if dfe.empty:
                     continue
                 fig.add_bar(
-                    name=f"{emp} - Libros",
+                    name=f"Saldo Libros {emp}",
                     x=dfe['PeriodoLib'],
                     y=dfe['Saldo Libros'],
                     marker_color=color_map[emp],
                     opacity=0.55,
                     offsetgroup='libros',
-                    legendgroup=f"{emp}-libros",
-                    hovertemplate='Periodo: %{x}<br>Empresa: %{fullData.name}<br>Saldo Libros: %{y:,.2f}<extra></extra>'
+                    legendgroup='Saldo Libros',
+                    legendgrouptitle_text=('Saldo Libros' if emp == empresas[0] else None),
+                    hovertemplate='Periodo: %{x}<br>Empresa: %{x}<br>Saldo Libros: %{y:,.2f}<extra></extra>'
                 )
         # Totales por pila (suma de todas las empresas) para posicionamiento y rótulos
         tot_ini = {}
@@ -217,7 +223,8 @@ def register(app):
             x=period_agg['PeriodoLib'], y=line_y, name='Movimientos',
             mode='lines+markers+text', text=labels_pct, textposition=positions,
             textfont=dict(size=10, color='#2ca02c'),
-            line=dict(color='#2ca02c', width=2)
+            line=dict(color='#2ca02c', width=2),
+            legendgroup='Movimientos', legendgrouptitle_text='Movimientos', showlegend=True
         ))
 
         # Variación total (%): Movimientos / Saldo Inicial del subconjunto filtrado
@@ -231,11 +238,17 @@ def register(app):
             titulo += " | Variación total: " + (f"{variacion_total:.2f}%".replace('.', ','))
         fig.update_layout(barmode='stack',
                           title=titulo,
-                          xaxis_title='Periodo (YYYY-MM)', yaxis_title='Valor', legend_title='Serie',
+                          xaxis_title='Periodo (YYYY-MM)', yaxis_title='Valor', legend_title=None,
                           plot_bgcolor='#ffffff', paper_bgcolor='#fafbfc',
                           font=dict(family='Arial', size=12, color='#222'),
                           hovermode='x unified',
-                          margin=dict(l=60, r=40, t=80, b=150))
+                          legend=dict(
+                              orientation='h',
+                              yanchor='top', y=-0.22, x=0, xanchor='left',
+                              tracegroupgap=30,
+                              borderwidth=0
+                          ),
+                          margin=dict(l=60, r=40, t=80, b=220))
         # Formateo de ticks a 'Mes YYYY' en español
         meses_es = {
             '01': 'Ene', '02': 'Feb', '03': 'Mar', '04': 'Abr', '05': 'May', '06': 'Jun',
@@ -268,32 +281,60 @@ def register(app):
         fig.update_yaxes(showgrid=True, gridcolor='#eef2f5', zerolinecolor='#d0d7de', rangemode='tozero', range=y1_range)
         # Eje secundario removido; se usa mapeo a banda superior del eje principal para la línea
 
-        # Anotaciones: etiquetas base "Saldo Inicial" / "Saldo Final" y totales arriba en millones
+        # Anotaciones: etiquetas base "Saldo Inicial" / "Saldo Final" y totales DENTRO de cada barra (al pie)
         annotations = []
+        # Holgura mínima relativa para ubicar la etiqueta pegada a la base sin tocar el eje
+        # Usamos 4% de la altura del total o 1.5% del máximo global, lo que sea mayor
+        min_pad = (max_bar * 0.015) if 'max_bar' in locals() else 0
         for per in cats:
-            # Total arriba de cada pila
-            if per in tot_ini:
+            # Etiquetas internas al pie para cada pila (Inicial / Libros)
+            t_ini = tot_ini.get(per) if isinstance(tot_ini, dict) else None
+            t_lib = tot_lib.get(per) if isinstance(tot_lib, dict) else None
+
+            if t_ini is not None and pd.notna(t_ini) and t_ini != 0:
+                pad = max(abs(t_ini) * 0.04, min_pad)
+                # Para barras positivas, anclar desde la base hacia arriba; para negativas, desde la base hacia abajo
+                if t_ini > 0:
+                    y_pos = pad
+                    yanchor = 'bottom'
+                else:
+                    y_pos = -pad
+                    yanchor = 'top'
                 annotations.append(dict(
-                    x=per, y=tot_ini[per], xref='x', yref='y',
-                    text=f"{tot_ini[per]/1_000_000:.1f} M", showarrow=False,
-                    yshift=6, font=dict(size=11, color='#1f77b4')
+                    x=per, y=y_pos, xref='x', yref='y',
+                    text=f"{t_ini/1_000_000:.1f} M", showarrow=False,
+                    xshift=-30, yanchor=yanchor,
+                    font=dict(size=11, color='#ffffff')
                 ))
-            if per in tot_lib:
+
+            if t_lib is not None and pd.notna(t_lib) and t_lib != 0:
+                pad = max(abs(t_lib) * 0.04, min_pad)
+                if t_lib > 0:
+                    y_pos = pad
+                    yanchor = 'bottom'
+                else:
+                    y_pos = -pad
+                    yanchor = 'top'
                 annotations.append(dict(
-                    x=per, y=tot_lib[per], xref='x', yref='y',
-                    text=f"{tot_lib[per]/1_000_000:.1f} M", showarrow=False,
-                    yshift=6, font=dict(size=11, color='#ff7f0e')
+                    x=per, y=y_pos, xref='x', yref='y',
+                    text=f"{t_lib/1_000_000:.1f} M", showarrow=False,
+                    xshift=30, yanchor=yanchor,
+                    font=dict(size=11, color='#ffffff')
                 ))
+
             # Etiquetas en la base para cada grupo; desplazamiento horizontal para separar
             annotations.append(dict(
                 x=per, y=0, xref='x', yref='y', text='Saldo Inicial', showarrow=False,
                 yshift=-14, xshift=-30, font=dict(size=10, color='#444')
             ))
             annotations.append(dict(
-                x=per, y=0, xref='x', yref='y', text='Saldo Final', showarrow=False,
+                x=per, y=0, xref='x', yref='y', text='Saldo Libros', showarrow=False,
                 yshift=-14, xshift=30, font=dict(size=10, color='#444')
             ))
         fig.update_layout(annotations=annotations)
         return fig
+
+    # Registrar el callback del gráfico de anillo dependiente del hover
+    egd.register(app)
 
 __all__ = ["layout","register"]
