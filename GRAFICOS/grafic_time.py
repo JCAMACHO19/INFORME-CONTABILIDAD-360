@@ -163,27 +163,137 @@ def register(app):
                     x=dfe['PeriodoLib'],
                     y=dfe['Saldo Libros'],
                     marker_color=color_map[emp],
+                    opacity=0.55,
                     offsetgroup='libros',
                     legendgroup=f"{emp}-libros",
                     hovertemplate='Periodo: %{x}<br>Empresa: %{fullData.name}<br>Saldo Libros: %{y:,.2f}<extra></extra>'
                 )
-        # Línea: Movimientos total por periodo de Fecha
-        dfl = df.groupby('PeriodoLib', as_index=False).agg({'Movimientos':'sum'})
+        # Totales por pila (suma de todas las empresas) para posicionamiento y rótulos
+        tot_ini = {}
+        if not grp_ini.empty:
+            tot_ini = grp_ini.groupby('PeriodoIni')['Saldo Inicial'].sum().to_dict()
+        tot_lib = {}
+        if not grp_lib.empty:
+            tot_lib = grp_lib.groupby('PeriodoLib')['Saldo Libros'].sum().to_dict()
+
+        # Línea: Movimientos total por periodo y etiquetas como Variación % (sum(Mov)/sum(Saldo Inicial)*100)
+        period_agg = df.groupby('PeriodoLib', as_index=False).agg({'Movimientos': 'sum', 'Saldo Inicial': 'sum'})
         # Asegurar que los periodos de la línea estén presentes en el orden del eje X
-        if not dfl.empty:
-            cats = sorted(set(cats).union(set(dfl['PeriodoLib'].dropna().unique())))
-        fig.add_trace(go.Scatter(x=dfl['PeriodoLib'], y=dfl['Movimientos'], name='Movimientos', mode='lines+markers',
-                                 line=dict(color='#2ca02c', width=2)))
+        if not period_agg.empty:
+            cats = sorted(set(cats).union(set(period_agg['PeriodoLib'].dropna().unique())))
+        # Calcular banda superior del eje Y principal para ubicar visualmente la línea
+        y1_max_data = 0.0
+        if len(tot_ini):
+            y1_max_data = max(y1_max_data, max(tot_ini.values()))
+        if len(tot_lib):
+            y1_max_data = max(y1_max_data, max(tot_lib.values()))
+        if y1_max_data <= 0:
+            y1_max_data = float(df['Saldo Libros'].sum()) if 'Saldo Libros' in df.columns else 1.0
+        band_min = y1_max_data * 0.86
+        band_max = y1_max_data * 0.98
+        mv_min = float(period_agg['Movimientos'].min()) if not period_agg.empty else 0.0
+        mv_max = float(period_agg['Movimientos'].max()) if not period_agg.empty else 1.0
+        if mv_min == mv_max:
+            mv_max = mv_min + 1.0
+        def scale_to_band(v: float) -> float:
+            return band_min + ((v - mv_min) / (mv_max - mv_min)) * (band_max - band_min)
+
+        # Etiquetas porcentaje con coma decimal y posiciones intercaladas
+        labels_pct = []
+        positions = []
+        line_y = []
+        for i, (_, row) in enumerate(period_agg.iterrows()):
+            si = row.get('Saldo Inicial', 0.0)
+            mv = row.get('Movimientos', 0.0)
+            line_y.append(scale_to_band(float(mv)))
+            if pd.notna(si) and si not in (0, 0.0):
+                val = (mv / si) * 100.0
+                labels_pct.append((f"{val:.2f}%").replace('.', ','))
+            else:
+                labels_pct.append('')
+            positions.append('top center' if i % 2 == 0 else 'bottom center')
+
+        fig.add_trace(go.Scatter(
+            x=period_agg['PeriodoLib'], y=line_y, name='Movimientos',
+            mode='lines+markers+text', text=labels_pct, textposition=positions,
+            textfont=dict(size=10, color='#2ca02c'),
+            line=dict(color='#2ca02c', width=2)
+        ))
+
+        # Variación total (%): Movimientos / Saldo Inicial del subconjunto filtrado
+        saldo_ini_sum = float(df['Saldo Inicial'].sum()) if 'Saldo Inicial' in df.columns else 0.0
+        mov_sum = float(df['Movimientos'].sum()) if 'Movimientos' in df.columns else 0.0
+        variacion_total = (mov_sum / saldo_ini_sum * 100.0) if saldo_ini_sum not in (0, 0.0) else None
+
         # Layout: dos pilas apiladas lado a lado por periodo (via offsetgroup)
+        titulo = 'Saldo Libros vs Saldo Inicial por periodo (apilados por Empresa), y Movimientos mensual'
+        if variacion_total is not None:
+            titulo += " | Variación total: " + (f"{variacion_total:.2f}%".replace('.', ','))
         fig.update_layout(barmode='stack',
-                          title='Saldo Libros vs Saldo Inicial por periodo (apilados por Empresa), y Movimientos mensual',
+                          title=titulo,
                           xaxis_title='Periodo (YYYY-MM)', yaxis_title='Valor', legend_title='Serie',
                           plot_bgcolor='#ffffff', paper_bgcolor='#fafbfc',
                           font=dict(family='Arial', size=12, color='#222'),
-                          hovermode='x unified')
+                          hovermode='x unified',
+                          margin=dict(l=60, r=40, t=80, b=150))
+        # Formateo de ticks a 'Mes YYYY' en español
+        meses_es = {
+            '01': 'Ene', '02': 'Feb', '03': 'Mar', '04': 'Abr', '05': 'May', '06': 'Jun',
+            '07': 'Jul', '08': 'Ago', '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dic'
+        }
+        def fmt_periodo(p):
+            s = str(p)
+            parts = s.split('-')
+            if len(parts) >= 2:
+                yy = parts[0]
+                mm = parts[1].zfill(2)
+                return f"{meses_es.get(mm, mm)} {yy}"
+            return s
+        tickvals = cats
+        ticktext = [fmt_periodo(p) for p in cats]
         fig.update_xaxes(showgrid=False, linecolor='#d0d7de', type='category',
-                         categoryorder='array', categoryarray=cats)
-        fig.update_yaxes(showgrid=True, gridcolor='#eef2f5', zerolinecolor='#d0d7de')
+                         categoryorder='array', categoryarray=cats,
+                         tickmode='array', tickvals=tickvals, ticktext=ticktext,
+                         ticklabelposition='outside bottom', ticks='outside', ticklen=16,
+                         automargin=True)
+        # Calcular rango del eje Y principal con holgura para no cortar las etiquetas superiores
+        max_bar = 0.0
+        if len(tot_ini):
+            max_bar = max(max_bar, max(tot_ini.values()))
+        if len(tot_lib):
+            max_bar = max(max_bar, max(tot_lib.values()))
+        y1_range = None
+        if max_bar and max_bar != float('inf'):
+            y1_range = [0, max_bar * 1.15]
+        fig.update_yaxes(showgrid=True, gridcolor='#eef2f5', zerolinecolor='#d0d7de', rangemode='tozero', range=y1_range)
+        # Eje secundario removido; se usa mapeo a banda superior del eje principal para la línea
+
+        # Anotaciones: etiquetas base "Saldo Inicial" / "Saldo Final" y totales arriba en millones
+        annotations = []
+        for per in cats:
+            # Total arriba de cada pila
+            if per in tot_ini:
+                annotations.append(dict(
+                    x=per, y=tot_ini[per], xref='x', yref='y',
+                    text=f"{tot_ini[per]/1_000_000:.1f} M", showarrow=False,
+                    yshift=6, font=dict(size=11, color='#1f77b4')
+                ))
+            if per in tot_lib:
+                annotations.append(dict(
+                    x=per, y=tot_lib[per], xref='x', yref='y',
+                    text=f"{tot_lib[per]/1_000_000:.1f} M", showarrow=False,
+                    yshift=6, font=dict(size=11, color='#ff7f0e')
+                ))
+            # Etiquetas en la base para cada grupo; desplazamiento horizontal para separar
+            annotations.append(dict(
+                x=per, y=0, xref='x', yref='y', text='Saldo Inicial', showarrow=False,
+                yshift=-14, xshift=-30, font=dict(size=10, color='#444')
+            ))
+            annotations.append(dict(
+                x=per, y=0, xref='x', yref='y', text='Saldo Final', showarrow=False,
+                yshift=-14, xshift=30, font=dict(size=10, color='#444')
+            ))
+        fig.update_layout(annotations=annotations)
         return fig
 
 __all__ = ["layout","register"]
