@@ -4,6 +4,10 @@ GRAFICOS/.venv/
 venv/
 
 # Archivos temporales de Excel (bloqueo)
+API/API.txt
+*.env
+env/
+ENV/
 ~$*.xls*
 INFORME BANCOS/SALDO BANCOS/~$*.xls*
 BALANCE DETALLADO/DOCUMENTOS/~$*.xls*
