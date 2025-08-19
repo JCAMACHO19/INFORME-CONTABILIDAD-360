@@ -9,6 +9,12 @@ import etiqueta_grafic_time as egd
 
 BASE_DIR = Path(__file__).resolve().parent
 
+# Paletas modernas (propuestas por el usuario)
+# - Saldo Inicial: cian/azules medios para look limpio y fresco
+# - Saldo Libros: azules profundos para contraste profesional
+PALETTE_INI = ['#41BCE7', '#41B7D6', '#2D8CB9', '#5B90C4']
+PALETTE_LIB = ['#1965B4', '#2E609A', '#31356D', '#2D8CB9']
+
 
 def cargar_datos() -> pd.DataFrame:
     df = cuadro_banc.cargar_datos()
@@ -109,9 +115,11 @@ def register(app):
         df['PeriodoLib'] = df['Fecha'].dt.to_period('M').astype(str)
         if 'Fecha Inicial' in df.columns:
             df['PeriodoIni'] = df['Fecha Inicial'].dt.to_period('M').astype(str)
-        palette = px.colors.qualitative.Safe + px.colors.qualitative.Set2 + px.colors.qualitative.Pastel
+
         empresas = sorted(df['Empresa'].unique())
-        color_map = {emp: palette[i % len(palette)] for i, emp in enumerate(empresas)}
+        # Mapear colores por empresa, con paletas distintas para cada serie
+        color_map_ini = {emp: PALETTE_INI[i % len(PALETTE_INI)] for i, emp in enumerate(empresas)}
+        color_map_lib = {emp: PALETTE_LIB[i % len(PALETTE_LIB)] for i, emp in enumerate(empresas)}
         # Selección por mes: Inicial = primer día encontrado; Libros = último día encontrado, por Empresa/Banco/mes
         # Luego, agregar por Empresa para las barras apiladas
         grp_ini = pd.DataFrame()
@@ -150,12 +158,17 @@ def register(app):
                     name=f"Saldo Inicial {emp}",
                     x=dfe['PeriodoIni'],
                     y=dfe['Saldo Inicial'],
-                    marker_color=color_map[emp],
-                    opacity=0.55,
+                    marker=dict(
+                        color=color_map_ini[emp],
+                        line=dict(color='#1f3a56', width=0.6),
+                        pattern=dict(shape='-', fgcolor='#82898F', size=6, solidity=0.05)
+                    ),
+                    opacity=0.60,
                     offsetgroup='inicial',
                     legendgroup='Saldo Inicial',
                     legendgrouptitle_text=('Saldo Inicial' if emp == empresas[0] else None),
-                    hovertemplate='Periodo: %{x}<br>Empresa: %{x}<br>Saldo Inicial: %{y:,.2f}<extra></extra>'
+                    customdata=[emp]*len(dfe),
+                    hovertemplate='%{customdata}: %{y:,.2f}<extra></extra>'
                 )
         # Serie 2: Saldo Libros por periodo (después)
         if not grp_lib.empty:
@@ -167,12 +180,13 @@ def register(app):
                     name=f"Saldo Libros {emp}",
                     x=dfe['PeriodoLib'],
                     y=dfe['Saldo Libros'],
-                    marker_color=color_map[emp],
+                    marker=dict(color=color_map_lib[emp], line=dict(color='#0f1b33', width=0.7)),
                     opacity=0.55,
                     offsetgroup='libros',
                     legendgroup='Saldo Libros',
                     legendgrouptitle_text=('Saldo Libros' if emp == empresas[0] else None),
-                    hovertemplate='Periodo: %{x}<br>Empresa: %{x}<br>Saldo Libros: %{y:,.2f}<extra></extra>'
+                    customdata=[emp]*len(dfe),
+                    hovertemplate='%{customdata}: %{y:,.2f}<extra></extra>'
                 )
         # Totales por pila (suma de todas las empresas) para posicionamiento y rótulos
         tot_ini = {}
@@ -224,7 +238,8 @@ def register(app):
             mode='lines+markers+text', text=labels_pct, textposition=positions,
             textfont=dict(size=10, color='#2ca02c'),
             line=dict(color='#2ca02c', width=2),
-            legendgroup='Movimientos', legendgrouptitle_text='Movimientos', showlegend=True
+            legendgroup='Movimientos', legendgrouptitle_text='Movimientos', showlegend=True,
+            hoverinfo='skip'
         ))
 
         # Variación total (%): Movimientos / Saldo Inicial del subconjunto filtrado
@@ -242,6 +257,7 @@ def register(app):
                           plot_bgcolor='#ffffff', paper_bgcolor='#fafbfc',
                           font=dict(family='Arial', size=12, color='#222'),
                           hovermode='x unified',
+                          hoverlabel=dict(namelength=0),
                           legend=dict(
                               orientation='h',
                               yanchor='top', y=-0.22, x=0, xanchor='left',
