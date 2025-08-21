@@ -13,12 +13,20 @@ pip install -r API/requirements.txt
 
 ## Configurar la clave
 
-- Opción recomendada: variable de entorno `OPENAI_API_KEY`.
-- Alternativa: en `API/API.txt` añade una línea como:
+# API (AGNO-only)
 
-```
-clave API: sk-....
-```
+Este módulo usa únicamente AGNO para la orquestación multiagente. Se eliminó el código legacy.
+
+Piezas principales:
+- `API.py`: cliente OpenAI 1.x; lee la clave de `OPENAI_API_KEY` o `API/API.txt` (línea `clave API: ...`).
+- `agno_orchestrator.py`: define herramientas por consulta, crea agentes AGNO y ejecuta un `Team` en modo `coordinate`.
+
+Requisitos:
+- Instala dependencias desde `API/requirements.txt`.
+- Configura `OPENAI_API_KEY` o añade `clave API: TU_CLAVE` a `API/API.txt`.
+
+Notas:
+- No hay fallback legacy; toda la lógica pasa por AGNO.
 
 Nota: No subas tu clave a repositorios públicos.
 

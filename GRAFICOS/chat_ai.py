@@ -26,6 +26,12 @@ def _build_context_bancos(data_json: str, max_rows: int = 1000) -> str:
     for c in ['Saldo Inicial','Saldo Libros','Movimientos','Adiciones','Salidas']:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors='coerce')
+    # Si no hay Adiciones/Salidas explícitas, derivarlas de Movimientos
+    if 'Movimientos' in df.columns:
+        if 'Adiciones' not in df.columns:
+            df['Adiciones'] = df['Movimientos'].where(df['Movimientos'] > 0, 0.0)
+        if 'Salidas' not in df.columns:
+            df['Salidas'] = (-df['Movimientos'].where(df['Movimientos'] < 0, 0.0)).abs()
 
     # Omitir cuentas CXP
     if 'Cuenta' in df.columns:
@@ -89,6 +95,8 @@ _ROOT = _Path(__file__).resolve().parents[1]
 if str(_ROOT) not in _sys.path:
     _sys.path.append(str(_ROOT))
 from API.API import chat_messages
+from API.agno_orchestrator import AgnoOrchestrator
+_ORCH = AgnoOrchestrator()
 
 TAB_ID = 'tab-chat-ai'
 
@@ -398,12 +406,24 @@ def register(app):
             context_text_adv = _build_rich_context_from_df(data_json)
             context_text_bancos = _build_context_bancos(data_json)
 
+            # Orquestación AGNO: decidir agente y obtener análisis especializado como grounding extra
+            orch_result = _ORCH.handle_query(
+                user_text=user_text,
+                data_json=data_json,
+                contexts={
+                    'period_basic': context_text,
+                    'rich': context_text_adv,
+                    'bancos': context_text_bancos,
+                }
+            )
+
             # Mensajes con memoria (system + resumen de datos + historial + nuevo user)
             messages = [
                 {"role":"system","content": _system_prompt()},
                 {"role":"system","content": f"Contexto de datos (agregado):\n{context_text}"},
                 {"role":"system","content": f"Contexto de datos (agregado avanzado):\n{context_text_adv}"},
                 {"role":"system","content": f"Contexto bancario detallado (por banco, empresa y periodo):\n{context_text_bancos}"},
+                {"role":"system","content": f"[AGNO] Agente seleccionado: {orch_result['agent']}\nSalida del agente:\n{orch_result['result_text']}"},
             ]
             history = conv[-8:]
             for m in history:
