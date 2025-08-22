@@ -14,7 +14,26 @@ TAB_CONTENT = {
 
 def main_layout():
     return html.Div([
-        html.H1('Dashboard Bancos', style={'fontFamily':'Arial'}),
+        # Título visible con presencia y fondo morado elegante, ligeramente transparente
+        html.H1(
+            'Dashboard Bancos',
+            style={
+                # Familia de fuente: preferir Coolvetica (requiere archivo en assets/fonts)
+                'fontFamily': "'Coolvetica','Montserrat','Helvetica Neue','Arial',sans-serif",
+                'color': '#000',
+                'textAlign': 'center',
+                # Tamaño adaptable que luce bien en desktop y se ajusta en pantallas más pequeñas
+                'fontSize': 'clamp(24px, 3.3vw, 40px)',
+                'fontWeight': 600,
+                # Morado/índigo basado en la paleta usada en grafic_time (#31356D), con transparencia suave
+                'background': 'rgba(49, 53, 109, 0.18)',
+                'padding': '14px 20px',
+                'margin': '0 0 12px 0',
+                'borderRadius': '12px',
+                'letterSpacing': '0.5px',
+                'boxShadow': '0 2px 8px rgba(0,0,0,0.06)'
+            }
+        ),
         dcc.Tabs(id='tabs', value='tab-grafica-bancos', children=[
             dcc.Tab(label='Gráfica Bancos', value='tab-grafica-bancos'),
             dcc.Tab(label='Cuadro Bancos', value='tab-cuadro-bancos'),

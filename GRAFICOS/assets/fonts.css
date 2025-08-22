@@ -1,0 +1,13 @@
+/* Load Coolvetica if present in assets/fonts */
+@font-face {
+  font-family: 'Coolvetica';
+  src: url('/assets/fonts/Coolvetica.woff2') format('woff2'),
+       url('/assets/fonts/Coolvetica.woff') format('woff'),
+       url('/assets/fonts/Coolvetica.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Optional: use Coolvetica for all H1s across the app */
+h1 { font-family: 'Coolvetica','Montserrat','Helvetica Neue','Arial',sans-serif; }

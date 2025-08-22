@@ -101,7 +101,22 @@ def layout():
         return f"{d.day} de {meses_es[d.month-1]} de {d.year}"
     fecha_default = fechas[-1].strftime('%Y-%m-%d') if fechas else None
     return html.Div([
-        html.H2('Distribución Saldo Libros por Empresa y Banco', style={'marginBottom':'8px'}),
+        html.H2(
+            'Distribución saldos bancarios',
+            style={
+                'marginBottom': '8px',
+                'fontFamily': "'Coolvetica','Montserrat','Helvetica Neue','Arial',sans-serif",
+                'fontWeight': 600,
+                'letterSpacing': '0.3px',
+                'fontSize': 'clamp(18px, 2.4vw, 28px)',
+                'color': '#111',
+                'background': 'rgba(49, 53, 109, 0.12)',
+                'padding': '8px 14px',
+                'borderRadius': '10px',
+                'textAlign': 'left',
+                'boxShadow': '0 1px 6px rgba(0,0,0,0.04)'
+            }
+        ),
         html.Div([
             html.Div([
                 html.Label('Fecha (única)'),
@@ -118,7 +133,7 @@ def layout():
                 dcc.Dropdown(
                     id='empresa-dropdown',
                     options=[{'label': e, 'value': e} for e in empresas],
-                    value=empresas,
+                    value=None,  # Sin selección inicial para ver todo
                     multi=True,
                     placeholder='Empresas'
                 )
@@ -128,7 +143,7 @@ def layout():
                 dcc.Dropdown(
                     id='banco-dropdown',
                     options=[{'label': b, 'value': b} for b in bancos],
-                    value=bancos,
+                    value=None,  # Sin selección inicial para ver todo
                     multi=True,
                     placeholder='Bancos'
                 )
@@ -192,9 +207,30 @@ def register(app):
         # Calcular porcentaje dentro de empresa
         grp['% Empresa'] = grp['Saldo Libros'] / grp.groupby('Empresa')['Saldo Libros'].transform('sum') * 100
         # Etiquetas internas: mostrar solo si el segmento tiene suficiente porcentaje
-        PCT_LABEL_MIN = 7.0  # umbral mínimo en % para mostrar texto dentro
+        PCT_LABEL_MIN = 8.0  # umbral ligeramente mayor para evitar ruido visual
         grp['LabelPct'] = grp['% Empresa'].apply(lambda v: f"{v:.1f}%" if pd.notna(v) and v >= PCT_LABEL_MIN else '')
-        palette = px.colors.qualitative.Safe + px.colors.qualitative.Set2 + px.colors.qualitative.Pastel
+        # Porcentaje para tooltip: mismo cálculo y redondeo que la etiqueta interna (1 decimal), pero sin ocultarlo
+        grp['PctTooltip'] = grp['% Empresa'].apply(lambda v: f"{v:.1f}%" if pd.notna(v) else '')
+        # Formatos para tooltip minimalista
+        def fmt_moneda_es(v: float) -> str:
+            try:
+                s = f"{v:,.0f}"
+                return "$" + s.replace(",", ".")
+            except Exception:
+                return "$0"
+        grp['SaldoFmt'] = grp['Saldo Libros'].apply(fmt_moneda_es)
+        # Paleta moderna y elegante solicitada
+        palette = [
+            "#B2B2B4",  # Gris medio
+            "#1965B4",  # Azul intenso
+            "#31356D",  # Azul marino oscuro
+            "#5B90C4",  # Azul acero claro
+            "#41BCE7",  # Cian medio
+            "#2E609A",  # Azul acero medio
+            "#2D8CB9",  # Azul cielo profundo
+            "#41B7D6",  # Cian medio
+            "#6BE6E8",  # Cian claro
+        ]
         # Formatear fecha seleccionada para el título
         meses_es = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
         titulo_fecha = None
@@ -204,26 +240,81 @@ def register(app):
                 titulo_fecha = f"{fdt.day} de {meses_es[fdt.month-1]} de {fdt.year}"
         except Exception:
             titulo_fecha = fecha_sel
-        fig = px.bar(grp, x='Empresa', y='Saldo Libros', color='Banco', barmode='stack', text='LabelPct',
-                     title=f"Saldo Libros por Empresa y Banco ({titulo_fecha})" if titulo_fecha else 'Saldo Libros por Empresa y Banco',
-                     color_discrete_sequence=palette)
+        fig = px.bar(
+            grp,
+            x='Empresa',
+            y='Saldo Libros',
+            color='Banco',
+            barmode='stack',
+            text='LabelPct',
+            title=None,
+            color_discrete_sequence=palette,
+            # Pasar custom_data por fila para mantener alineación punto a punto en cada traza
+            custom_data=['Empresa', 'SaldoFmt', 'PctTooltip']
+        )
         # Hover personalizado
-        fig.update_traces(hovertemplate=('Empresa: %{x}<br>Banco: %{fullData.name}<br>'
-                                         'Saldo Libros: %{y:,.2f}<br>Participación: %{customdata[0]:.1f}%<extra></extra>'),
-                          customdata=grp[['% Empresa']].to_numpy(),
-                          textposition='inside',
-                          textfont=dict(color='#ffffff', size=11))
-        # Añadir totales sobre cada barra
+        fig.update_traces(
+            # En hovermode='x unified' el encabezado muestra la Empresa una sola vez (x),
+            # y cada línea debe mostrar: Banco – $Saldo (Pct)
+            hovertemplate=(
+                "%{fullData.name} – %{customdata[1]} (%{customdata[2]})<extra></extra>"
+            ),
+            textposition='inside',
+            textfont=dict(color='#ffffff', size=11),
+            insidetextanchor='middle'
+        )
+    # Añadir totales sobre cada barra (formato $ entero) por empresa
         tot_por_emp = grp.groupby('Empresa')['Saldo Libros'].sum()
         for emp, total in tot_por_emp.items():
-            fig.add_annotation(x=emp, y=total, text=f"{total:,.2f}", showarrow=False,
-                               yshift=5, font=dict(size=11,color='#222'))
+            fig.add_annotation(
+        x=emp,
+        y=total,
+        text=fmt_moneda_es(total),
+        showarrow=False,
+        yshift=12,
+        yanchor='bottom',
+                font=dict(size=11, color='#000000'),
+        bgcolor='#ffffff',
+        bordercolor='#d0d7de',
+        borderwidth=1,
+        borderpad=2,
+            )
+        # Título como anotación centrada debajo del eje X (sin fondo)
+        titulo_graf = f"Total Saldos a {titulo_fecha}" if titulo_fecha else 'Total Saldos'
         fig.update_layout(
-            xaxis_title='Empresa', yaxis_title='Saldo Libros', legend_title='Banco',
-            hovermode='x unified', bargap=0.25,
-            plot_bgcolor='#ffffff', paper_bgcolor='#fafbfc',
-            font=dict(family='Arial', size=12, color='#222'),
-            legend=dict(borderwidth=0, itemclick='toggleothers', orientation='h', yanchor='bottom', y=1.02, x=0)
+            xaxis_title='Empresa',
+            yaxis_title='Saldo Libros',
+            legend_title='Banco',
+            hovermode='x unified',
+            bargap=0.18,
+            plot_bgcolor='#ffffff',
+            paper_bgcolor='#fafbfc',
+            font=dict(
+                family="'Coolvetica','Montserrat','Helvetica Neue','Arial',sans-serif",
+                size=12,
+                color='#222'
+            ),
+            legend=dict(
+                borderwidth=0,
+                itemclick='toggleothers',
+                orientation='h',
+                yanchor='bottom', y=1.02,
+                x=0
+            ),
+            margin=dict(l=60, r=40, t=70, b=120),
+            annotations=[
+                dict(
+                    text=titulo_graf,
+                    xref='paper', yref='paper', x=0.5, y=-0.18,
+                    showarrow=False,
+                    font=dict(
+                        size=14,
+                        color='#0f1b33',
+                        family="'Coolvetica','Montserrat','Helvetica Neue','Arial',sans-serif"
+                    ),
+                    align='center'
+                )
+            ]
         )
         fig.update_xaxes(showgrid=False, linecolor='#d0d7de')
         fig.update_yaxes(showgrid=True, gridcolor='#eef2f5', zerolinecolor='#d0d7de')

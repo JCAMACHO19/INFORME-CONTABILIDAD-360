@@ -5,18 +5,32 @@ from agno.agent import Agent
 
 
 def build_stat_agent(tools: List, contexts: Dict[str, str]) -> Agent:
-    """Crea el agente estadístico con instrucciones y contexto adicional."""
+    """Crea el agente estadístico con responsabilidades y estilo precisos."""
+    style = contexts.get('_style', '') or ''
+    addl_ctx = "\n\n".join([
+        style.strip(),
+        (contexts.get('period_basic','') or '').strip(),
+        (contexts.get('rich','') or '').strip(),
+    ]).strip()
+
     return Agent(
-        name="Estadístico-Calculador",
-        role="Analista estadístico con precisión numérica",
+        name="Agente Estadístico-Calculador",
+        role=(
+            "Responsable de calcular y analizar magnitudes estadísticas y financieras derivadas:"
+            " media, mediana, moda, desviación estándar, varianza, percentiles, rangos,"
+            " tasas de variación (%), crecimiento intermensual/acumulado y contribuciones."
+        ),
         instructions=[
-            "Responde con cálculos exactos, usando herramientas si es necesario.",
-            "Usa Banco/Empresa/Periodo para filtrar; omite filas con 'CXP'.",
-            "Devuelve cifras con miles y 2 decimales.",
+            "Resuelve con precisión numérica, pero no muestres pasos, fórmulas detalladas ni los datos intermedios.",
+            "Filtra por Banco/Empresa/Periodo cuando se solicite; omite filas cuya Cuenta contenga 'CXP'.",
+            "Entrega solo las cifras esenciales: resultados finales y 1–3 porcentajes clave. Evita tablas y listados de periodos.",
+            "Formatea números con separadores de miles y 2 decimales; porcentajes con 2 decimales y signo %.",
+            "Si faltan datos, indícalo y sugiere un filtro alternativo o el periodo disponible más cercano.",
+            "Prioriza explicación breve del hallazgo (tendencia/impacto) antes de las cifras.",
         ],
         tools=tools,
         add_context=False,
-        additional_context=(contexts.get('period_basic','') or '') + "\n\n" + (contexts.get('rich','') or ''),
-        show_tool_calls=True,
+        additional_context=addl_ctx,
+        show_tool_calls=False,
         tool_call_limit=4,
     )
