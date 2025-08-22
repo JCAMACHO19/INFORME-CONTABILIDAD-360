@@ -9,11 +9,11 @@ import etiqueta_grafic_time as egd
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# Paletas modernas (propuestas por el usuario)
-# - Saldo Inicial: cian/azules medios para look limpio y fresco
-# - Saldo Libros: azules profundos para contraste profesional
-PALETTE_INI = ['#41BCE7', '#41B7D6', '#2D8CB9', '#5B90C4']
-PALETTE_LIB = ['#1965B4', '#2E609A', '#31356D', '#2D8CB9']
+# Paletas modernas (actualizadas)
+# - Saldo Inicial (suaves): gris/cian/azules claros
+# - Saldo Libros (fuertes): azules intensos/oscursos
+PALETTE_INI = ['#607ec9', '#41BCE7', '#788199', '#41B7D6', '#607ec9']
+PALETTE_LIB = ['#2f2c79', '#00ffff', '#1965B4', '#2D8CB9']
 
 
 def cargar_datos() -> pd.DataFrame:
@@ -44,15 +44,31 @@ def layout():
     empresas = sorted(df['Empresa'].dropna().unique()) if not df.empty else []
     bancos = sorted(df['Banco'].dropna().unique()) if (not df.empty and 'Banco' in df.columns) else []
     return html.Div([
-        html.H2('Evolución de Saldo Libros y Movimientos'),
+        html.H2(
+            'Evolución cuentas bancarias',
+            style={
+                'marginBottom': '8px',
+                'fontFamily': "'Coolvetica','Montserrat','Helvetica Neue','Arial',sans-serif",
+                'fontWeight': 600,
+                'letterSpacing': '0.3px',
+                'fontSize': 'clamp(18px, 2.4vw, 28px)',
+                'color': '#111',
+                'background': 'rgba(49, 53, 109, 0.12)',
+                'padding': '8px 14px',
+                'borderRadius': '10px',
+                'textAlign': 'left',
+                'boxShadow': '0 1px 6px rgba(0,0,0,0.04)'
+            }
+        ),
         html.Div([
             html.Div([
                 html.Label('Empresas'),
                 dcc.Dropdown(
                     id='gt-empresa-dropdown',
                     options=[{'label': e, 'value': e} for e in empresas],
-                    value=empresas,
-                    multi=True
+                    value=None,
+                    multi=True,
+                    placeholder='Empresas'
                 )
             ], style={'flex':2,'minWidth':'250px','marginRight':'12px'}),
             html.Div([
@@ -60,8 +76,9 @@ def layout():
                 dcc.Dropdown(
                     id='gt-banco-dropdown',
                     options=[{'label': b, 'value': b} for b in bancos],
-                    value=bancos,
-                    multi=True
+                    value=None,
+                    multi=True,
+                    placeholder='Bancos'
                 )
             ], style={'flex':2,'minWidth':'250px','marginRight':'12px'}),
             html.Div([
@@ -248,23 +265,29 @@ def register(app):
         variacion_total = (mov_sum / saldo_ini_sum * 100.0) if saldo_ini_sum not in (0, 0.0) else None
 
         # Layout: dos pilas apiladas lado a lado por periodo (via offsetgroup)
-        titulo = 'Saldo Libros vs Saldo Inicial por periodo (apilados por Empresa), y Movimientos mensual'
+        titulo = 'Saldo Inicial vs Saldo Final'
         if variacion_total is not None:
-            titulo += " | Variación total: " + (f"{variacion_total:.2f}%".replace('.', ','))
-        fig.update_layout(barmode='stack',
-                          title=titulo,
-                          xaxis_title='Periodo (YYYY-MM)', yaxis_title='Valor', legend_title=None,
-                          plot_bgcolor='#ffffff', paper_bgcolor='#fafbfc',
-                          font=dict(family='Arial', size=12, color='#222'),
-                          hovermode='x unified',
-                          hoverlabel=dict(namelength=0),
-                          legend=dict(
-                              orientation='h',
-                              yanchor='top', y=-0.22, x=0, xanchor='left',
-                              tracegroupgap=30,
-                              borderwidth=0
-                          ),
-                          margin=dict(l=60, r=40, t=80, b=220))
+            titulo += "   |   Variación total: " + (f"{variacion_total:.2f}%".replace('.', ','))
+        fig.update_layout(
+            barmode='stack',
+            title=titulo,
+            xaxis_title='Periodo',
+            yaxis_title='Valor',
+            legend_title=None,
+            plot_bgcolor='#ffffff',
+            paper_bgcolor='#fafbfc',
+            font=dict(family='Arial', size=12, color='#222'),
+            hovermode='x unified',
+            hoverlabel=dict(namelength=0),
+            legend=dict(
+                orientation='h',
+                yanchor='top', y=-0.22,
+                x=0, xanchor='left',
+                tracegroupgap=30,
+                borderwidth=0
+            ),
+            margin=dict(l=60, r=40, t=80, b=220)
+        )
         # Formateo de ticks a 'Mes YYYY' en español
         meses_es = {
             '01': 'Ene', '02': 'Feb', '03': 'Mar', '04': 'Abr', '05': 'May', '06': 'Jun',

@@ -1,4 +1,5 @@
 from pathlib import Path
+from io import StringIO
 import pandas as pd
 from dash import html, dcc, Input, Output
 from dash import dash_table
@@ -30,6 +31,17 @@ MOV_COLS = [
     'Traslado de Fondos',
 ]
 
+# Formateo de fechas en español (texto largo)
+MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+def fecha_es(d) -> str:
+    try:
+        return f"{d.day} de {MESES_ES[d.month-1]} de {d.year}"
+    except Exception:
+        # Fallback ISO
+        try:
+            return d.strftime('%Y-%m-%d')
+        except Exception:
+            return str(d)
 
 
 def cargar_datos() -> pd.DataFrame:
@@ -173,7 +185,7 @@ def layout():
     # Fecha Inicial mostrada por defecto: si hay varias, la mínima
     fecha_inicial_default = None
     if not df.empty and 'Fecha Inicial' in df.columns and df['Fecha Inicial'].notna().any():
-        fecha_inicial_default = df['Fecha Inicial'].min().date().strftime('%Y-%m-%d')
+        fecha_inicial_default = fecha_es(df['Fecha Inicial'].min().date())
 
     # Datos iniciales para la tabla (aplican mismo filtrado CXP y totalización que en callback)
     if not df.empty:
@@ -206,16 +218,31 @@ def layout():
     else:
         data_records = []
     return html.Div([
-        html.H2('Cuadro de Movimientos y Saldos Bancarios'),
+        html.H2(
+            'Informe saldos Bancarios',
+            style={
+                'marginBottom': '8px',
+                'fontFamily': "'Coolvetica','Montserrat','Helvetica Neue','Arial',sans-serif",
+                'fontWeight': 600,
+                'letterSpacing': '0.3px',
+                'fontSize': 'clamp(18px, 2.4vw, 28px)',
+                'color': '#111',
+                'background': 'rgba(49, 53, 109, 0.12)',
+                'padding': '8px 14px',
+                'borderRadius': '10px',
+                'textAlign': 'left',
+                'boxShadow': '0 1px 6px rgba(0,0,0,0.04)'
+            }
+        ),
         html.Div([
             html.Div([
                 html.Label('Empresas'),
                 dcc.Dropdown(
                     id='cb-empresa-dropdown',
                     options=[{'label': e, 'value': e} for e in empresas],
-                    value=empresas,
+                    value=None,
                     multi=True,
-                    placeholder='Seleccione empresas'
+                    placeholder='Empresas'
                 )
             ], style={'flex':1,'minWidth':'250px','marginRight':'12px'}),
             html.Div([
@@ -223,16 +250,16 @@ def layout():
                 dcc.Dropdown(
                     id='cb-banco-dropdown',
                     options=[{'label': b, 'value': b} for b in bancos],
-                    value=bancos,
+                    value=None,
                     multi=True,
-                    placeholder='Seleccione banco(s)'
+                    placeholder='Bancos'
                 )
             ], style={'flex':1,'minWidth':'250px','marginRight':'12px'}),
             html.Div([
                 html.Label('Fecha Final'),
                 dcc.Dropdown(
                     id='cb-fecha-dropdown',
-                    options=[{'label': f.strftime('%Y-%m-%d'), 'value': f.strftime('%Y-%m-%d')} for f in fechas],
+                    options=[{'label': fecha_es(f), 'value': f.strftime('%Y-%m-%d')} for f in fechas],
                     value=(fechas[-1].strftime('%Y-%m-%d') if fechas else None),
                     multi=False,
                     clearable=False,
@@ -246,7 +273,7 @@ def layout():
         html.Div([
             html.Span('Fecha Inicial:', style={'fontWeight':'600','marginRight':'6px'}),
             html.Span(fecha_inicial_default or '—', id='cb-fecha-inicial-card')
-        ], style={'marginBottom':'4px','background':'#f5f7fa','padding':'6px 12px','border':'1px solid #d9e1ec','borderRadius':'6px','display':'inline-block','fontSize':'13px','marginLeft':'210px'}),
+    ], style={'marginBottom':'4px','background':'#f5f7fa','padding':'6px 12px','border':'1px solid #d9e1ec','borderRadius':'6px','display':'inline-block','fontSize':'13px'}),
         dcc.Loading(dash_table.DataTable(
             id='cuadro-bancos-table',
             columns=[
@@ -264,8 +291,8 @@ def layout():
             page_action='native',
             page_size=25,
             style_table={'overflowX':'auto','border':'0px','padding':'4px'},
-            style_header={'backgroundColor':'#f5f7fa','fontWeight':'600','border':'1px solid #d9e1ec','borderRadius':'4px'},
-            style_cell={'padding':'6px 10px','fontFamily':'Arial','fontSize':'13px','border':'1px solid #edf0f5'},
+        style_header={'backgroundColor':'#f5f7fa','fontWeight':'600','border':'1px solid #d9e1ec','borderRadius':'4px','textAlign':'left'},
+        style_cell={'padding':'6px 10px','fontFamily':'Arial','fontSize':'13px','border':'1px solid #edf0f5','textAlign':'left'},
             style_data={'backgroundColor':'white'},
             style_data_conditional=[
                 {'if': {'filter_query': '{Movimientos} < 0','column_id':'Movimientos'}, 'color':'#b30000','fontWeight':'600'},
@@ -277,7 +304,7 @@ def layout():
             css=[{'selector':'.dash-table-container','rule':'padding:4px;'}]
         )),
         dcc.Store(id='cb-data-store')
-    ], style={'fontFamily':'Arial','padding':'18px'})
+    ], style={'fontFamily':'Arial','padding':'18px','backgroundColor':'#fafbfc','textAlign':'left'})
 
 
 def register(app):
@@ -301,7 +328,7 @@ def register(app):
     def actualizar(data_json, empresas_sel, bancos_sel, fecha_sel):
         if not data_json:
             return [], '—'
-        df = pd.read_json(data_json, orient='split')
+        df = pd.read_json(StringIO(data_json), orient='split')
         if 'Fecha' in df.columns:
             df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
         if 'Fecha Inicial' in df.columns:
@@ -323,7 +350,10 @@ def register(app):
         df = df.sort_values(['Fecha','Empresa','Cuenta'])
         fecha_inicial_card = '—'
         if 'Fecha Inicial' in df.columns and df['Fecha Inicial'].notna().any():
-            fecha_inicial_card = df['Fecha Inicial'].min().strftime('%Y-%m-%d')
+            try:
+                fecha_inicial_card = fecha_es(df['Fecha Inicial'].min().date())
+            except Exception:
+                fecha_inicial_card = df['Fecha Inicial'].min().strftime('%Y-%m-%d')
         # Recalcular variacion sobre el subconjunto filtrado (por si se filtra Empresa / Fecha)
         if 'Saldo Inicial' in df.columns and 'Movimientos' in df.columns:
             import numpy as np
