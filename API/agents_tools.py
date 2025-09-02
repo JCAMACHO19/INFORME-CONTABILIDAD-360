@@ -69,8 +69,8 @@ def make_tools(data_json: Optional[str], contexts: Dict[str, str]) -> List[Calla
             f"Salidas={r.get('Salidas',0.0):.2f} | MV={r.get('Movimientos',0.0):.2f} | SL={r.get('Saldo Libros',0.0):.2f}"
         )
 
-    @tool(name="latest_period_kpis", description="KPIs clave del último periodo disponible por Empresa: SL, MV, variación % vs periodo previo.")
-    def latest_period_kpis(empresa: str = '') -> str:
+
+    def _latest_period_kpis(empresa: str = '') -> str:
         dd = df
         if empresa and 'Empresa' in dd.columns:
             dd = dd[dd['Empresa'].astype(str).str.contains(empresa, case=False, na=False)]
@@ -92,8 +92,12 @@ def make_tools(data_json: Optional[str], contexts: Dict[str, str]) -> List[Calla
                 var = (sl - prev_sl) / abs(prev_sl) * 100.0
         return f"Periodo {last['Periodo']} | SL={sl:.2f} | MV={mv:.2f} | Var% vs previo={var:.2f}%"
 
-    @tool(name="top_banks_concentration", description="Concentración top-3 bancos del SL del último periodo (porcentaje sobre total empresa).")
-    def top_banks_concentration(empresa: str = '') -> str:
+    @tool(name="latest_period_kpis", description="KPIs clave del último periodo disponible por Empresa: SL, MV, variación % vs periodo previo.")
+    def latest_period_kpis(empresa: str = '') -> str:
+        return _latest_period_kpis(empresa)
+
+
+    def _top_banks_concentration(empresa: str = '') -> str:
         dd = df
         if empresa and 'Empresa' in dd.columns:
             dd = dd[dd['Empresa'].astype(str).str.contains(empresa, case=False, na=False)]
@@ -109,11 +113,16 @@ def make_tools(data_json: Optional[str], contexts: Dict[str, str]) -> List[Calla
         names = ", ".join(top3['Banco'].astype(str).tolist())
         return f"Periodo {last_period} | Top3={pct_top3:.2f}% del SL total ({names})"
 
+    @tool(name="top_banks_concentration", description="Concentración top-3 bancos del SL del último periodo (porcentaje sobre total empresa).")
+    def top_banks_concentration(empresa: str = '') -> str:
+        return _top_banks_concentration(empresa)
+
+
     @tool(name="kpi_bundle", description="Paquete de KPIs concisos para respuesta final: SL último, Var% MoM, MV neto, Top3 concentración.")
     def kpi_bundle(empresa: str = '') -> str:
         return "; ".join([
-            latest_period_kpis(empresa=empresa),
-            top_banks_concentration(empresa=empresa),
+            _latest_period_kpis(empresa=empresa),
+            _top_banks_concentration(empresa=empresa),
         ])
 
     @tool(name="fin_risk_projection", description="Evalúa banderas de riesgo básicas y proyecta SL de forma lineal.")

@@ -12,8 +12,8 @@ BASE_DIR = Path(__file__).resolve().parent
 # Paletas modernas (actualizadas)
 # - Saldo Inicial (suaves): gris/cian/azules claros
 # - Saldo Libros (fuertes): azules intensos/oscursos
-PALETTE_INI = ['#607ec9', '#41BCE7', '#788199', '#41B7D6', '#607ec9']
-PALETTE_LIB = ['#2f2c79', '#00ffff', '#1965B4', '#2D8CB9']
+PALETTE_INI = ['#607ec9', '#49a4f5', '#68ddbd', '#788199', '#607ec9']
+PALETTE_LIB = ['#2f2c79', '#166cc2', '#038554', '#1e1e1e']
 
 
 def cargar_datos() -> pd.DataFrame:
@@ -167,12 +167,12 @@ def register(app):
         fig = go.Figure()
         # Serie 1: Saldo Inicial por periodo (primero, más opaco)
         if not grp_ini.empty:
-            for emp in empresas:
+            for idx, emp in enumerate(empresas):
                 dfe = grp_ini[grp_ini['Empresa'] == emp]
                 if dfe.empty:
                     continue
                 fig.add_bar(
-                    name=f"Saldo Inicial {emp}",
+                    name=emp,
                     x=dfe['PeriodoIni'],
                     y=dfe['Saldo Inicial'],
                     marker=dict(
@@ -183,25 +183,25 @@ def register(app):
                     opacity=0.60,
                     offsetgroup='inicial',
                     legendgroup='Saldo Inicial',
-                    legendgrouptitle_text=('Saldo Inicial' if emp == empresas[0] else None),
+                    legendgrouptitle_text=('Saldo Inicial' if idx == 0 else None),
                     customdata=[emp]*len(dfe),
                     hovertemplate='%{customdata}: %{y:,.2f}<extra></extra>'
                 )
         # Serie 2: Saldo Libros por periodo (después)
         if not grp_lib.empty:
-            for emp in empresas:
+            for idx, emp in enumerate(empresas):
                 dfe = grp_lib[grp_lib['Empresa'] == emp]
                 if dfe.empty:
                     continue
                 fig.add_bar(
-                    name=f"Saldo Libros {emp}",
+                    name=emp,
                     x=dfe['PeriodoLib'],
                     y=dfe['Saldo Libros'],
                     marker=dict(color=color_map_lib[emp], line=dict(color='#0f1b33', width=0.7)),
                     opacity=0.55,
                     offsetgroup='libros',
                     legendgroup='Saldo Libros',
-                    legendgrouptitle_text=('Saldo Libros' if emp == empresas[0] else None),
+                    legendgrouptitle_text=('Saldo Libros' if idx == 0 else None),
                     customdata=[emp]*len(dfe),
                     hovertemplate='%{customdata}: %{y:,.2f}<extra></extra>'
                 )
@@ -251,10 +251,16 @@ def register(app):
             positions.append('top center' if i % 2 == 0 else 'bottom center')
 
         fig.add_trace(go.Scatter(
-            x=period_agg['PeriodoLib'], y=line_y, name='Movimientos',
-            mode='lines+markers+text', text=labels_pct, textposition=positions,
-            textfont=dict(size=10, color='#2ca02c'),
-            line=dict(color='#2ca02c', width=2),
+            x=period_agg['PeriodoLib'],
+            y=line_y,
+            name='Movimientos',
+            mode='lines+markers+text',
+            text=labels_pct,
+            textposition=positions,
+            textfont=dict(size=10, color='#170000', family='Arial',),
+            # Negrilla para las etiquetas de texto (usando <b> en el texto)
+            texttemplate="<b>%{text}</b>",
+            line=dict(color='#170000', width=2),
             legendgroup='Movimientos', legendgrouptitle_text='Movimientos', showlegend=True,
             hoverinfo='skip'
         ))
@@ -343,7 +349,7 @@ def register(app):
                     x=per, y=y_pos, xref='x', yref='y',
                     text=f"{t_ini/1_000_000:.1f} M", showarrow=False,
                     xshift=-30, yanchor=yanchor,
-                    font=dict(size=11, color='#ffffff')
+                    font=dict(size=11, color='#ffffff', family='Arial', weight='bold')
                 ))
 
             if t_lib is not None and pd.notna(t_lib) and t_lib != 0:
@@ -358,16 +364,16 @@ def register(app):
                     x=per, y=y_pos, xref='x', yref='y',
                     text=f"{t_lib/1_000_000:.1f} M", showarrow=False,
                     xshift=30, yanchor=yanchor,
-                    font=dict(size=11, color='#ffffff')
+                    font=dict(size=11, color='#ffffff', family='Arial', weight='bold')
                 ))
 
             # Etiquetas en la base para cada grupo; desplazamiento horizontal para separar
             annotations.append(dict(
-                x=per, y=0, xref='x', yref='y', text='Saldo Inicial', showarrow=False,
+                x=per, y=0, xref='x', yref='y', text='Saldo Inicial  ', showarrow=False,
                 yshift=-14, xshift=-30, font=dict(size=10, color='#444')
             ))
             annotations.append(dict(
-                x=per, y=0, xref='x', yref='y', text='Saldo Libros', showarrow=False,
+                x=per, y=0, xref='x', yref='y', text='  Saldo Final', showarrow=False,
                 yshift=-14, xshift=30, font=dict(size=10, color='#444')
             ))
         fig.update_layout(annotations=annotations)
