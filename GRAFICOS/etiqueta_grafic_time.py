@@ -8,21 +8,34 @@ import plotly.graph_objects as go
 
 
 def layout():
+    container_style = {
+        'minWidth': '380px',
+        'maxWidth': '520px',
+        'flex': '0 1 460px',
+        'padding': '12px 16px 16px 16px',
+        'background': 'linear-gradient(145deg, #ffffff, #f5f7fa)',
+        'border': '1px solid #e2e8f0',
+        'borderRadius': '10px',
+        'boxShadow': '0 2px 4px rgba(30,41,59,0.06), 0 1px 2px rgba(30,41,59,0.04)',
+        'fontFamily': '"Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", Arial, sans-serif'
+    }
+    panel_style = {'flex': '1', 'minWidth': '320px', 'background': '#ffffff', 'padding': '8px 10px 4px', 'border': '1px solid #e5e9ef', 'borderRadius': '8px'}
+    header_style = {'fontWeight': 600, 'marginBottom': '4px', 'fontSize': '12px', 'letterSpacing': '.5px', 'textTransform': 'uppercase', 'color': '#475569'}
     return html.Div(
         [
-            html.H4('Radar por Banco (Periodo seleccionado)', style={'margin': '6px 0 8px'}),
+            html.H4('Radar de Banco', style={'margin': '0 0 12px', 'fontWeight': 600, 'fontSize': '16px', 'color': '#1e293b'}),
             html.Div([
                 html.Div([
-                    html.Div('Saldo Inicial', style={'fontWeight': 600, 'marginBottom': '4px'}),
-                    dcc.Graph(id='gt-radar-inicial', style={'height': '280px'}),
-                ], style={'flex': '1', 'minWidth': '320px'}),
+                    html.Div('Saldo Inicial', style=header_style),
+                    dcc.Graph(id='gt-radar-inicial', style={'height': '290px'}),
+                ], style=panel_style),
                 html.Div([
-                    html.Div('Saldo Libros', style={'fontWeight': 600, 'marginBottom': '4px'}),
-                    dcc.Graph(id='gt-radar-libros', style={'height': '280px'}),
-                ], style={'flex': '1', 'minWidth': '320px'}),
-            ], style={'display': 'flex', 'flexDirection': 'column', 'gap': '12px'}),
+                    html.Div('Saldo Libros', style=header_style),
+                    dcc.Graph(id='gt-radar-libros', style={'height': '290px'}),
+                ], style=panel_style),
+            ], style={'display': 'flex', 'flexDirection': 'column', 'gap': '14px'}),
         ],
-        style={'minWidth': '380px', 'maxWidth': '520px', 'flex': '0 1 460px', 'padding': '0 0 0 12px'}
+        style=container_style
     )
 
 
@@ -41,12 +54,18 @@ def _periodo_str_es(periodo: str) -> str:
 def _empty_polar(msg: str) -> go.Figure:
     fig = go.Figure()
     fig.update_layout(
-        title=msg,
-        paper_bgcolor='#fafbfc',
+        title=dict(text=msg, font=dict(size=12, color='#334155', family='Inter,Arial,sans-serif')),
+        paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='#ffffff',
-        polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
-        margin=dict(l=10, r=10, t=50, b=10),
+        polar=dict(
+            # Fondo gris muy claro para contraste suave
+            bgcolor='rgba(243,244,246,0.75)',  # #f3f4f6 translúcido
+            radialaxis=dict(visible=True, range=[0, 1], gridcolor='#edf2f7', gridwidth=1, linecolor='#cbd5e1'),
+            angularaxis=dict(gridcolor='#f1f5f9')
+        ),
+        margin=dict(l=18, r=18, t=46, b=22),
         showlegend=False,
+        font=dict(family='Inter,Arial,sans-serif', color='#334155')
     )
     return fig
 
@@ -89,37 +108,51 @@ def _radar(
         except Exception:
             pass
         return c
-    fig.add_trace(go.Scatterpolar(r=r, theta=theta, fill='toself', name=title,
-                                  line=dict(color=color), fillcolor=_hex_to_rgba(color, 0.2)))
+    fig.add_trace(go.Scatterpolar(
+        r=r,
+        theta=theta,
+        fill='toself',
+        name=title,
+        line=dict(color=color, width=2),
+        fillcolor=_hex_to_rgba(color, 0.18),
+        marker=dict(size=5, color=color, line=dict(color='#ffffff', width=1)),
+        hovertemplate='<b>%{theta}</b><br>Valor: %{r:,.2f}<extra></extra>'
+    ))
     # Ángulo del eje radial (donde se ubican las etiquetas de referencia)
     radial_axis_angle = 90
 
     fig.update_layout(
-        title=title,
+        title=dict(text=title, font=dict(size=12, color='#334155', family='Inter,Arial,sans-serif')),
         showlegend=False,
-        paper_bgcolor='#fafbfc',
+        paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='#ffffff',
         polar=dict(
+            # Fondo gris muy claro para contraste suave
+            bgcolor='rgba(243,244,246,0.75)',  # #f3f4f6 translúcido
             radialaxis=dict(
                 visible=True,
-                range=[0, max_val * 1.08],
-                gridcolor='#e6eaef',
+                range=[0, max_val * 1.05],
+                gridcolor='#e2e8f0',
                 gridwidth=1,
-                tickfont=dict(size=10, color='#5b6775'),
-                angle=radial_axis_angle,  # orientar la línea de referencia de la escala en vertical
+                tickfont=dict(size=10, color='#64748b'),
+                angle=radial_axis_angle,
                 showline=True,
-                linecolor='#ccd6e0',
-                ticks='outside',
-                showticklabels=False,  # ocultar etiquetas nativas para controlar orientación horizontal personalizada
+                linecolor='#cbd5e1',
+                ticks='',
+                showticklabels=False,
                 **({'tickmode': 'array', 'tickvals': radial_tickvals, 'ticktext': radial_ticktext} if radial_tickvals and radial_ticktext else {})
             ),
             angularaxis=dict(
-                gridcolor='#e9eef3',
-                tickfont=dict(size=10),
+                gridcolor='#f1f5f9',
+                linecolor='#e2e8f0',
+                tickfont=dict(size=11, color='#475569'),
+                rotation=90,  # alinear primer eje arriba para simetría
+                direction='clockwise',
                 **({'tickmode': 'array', 'tickvals': categorias, 'ticktext': ticktexts} if ticktexts else {})
             )
         ),
-        margin=dict(l=10, r=10, t=50, b=10),
+        margin=dict(l=18, r=18, t=46, b=22),
+        font=dict(family='Inter,Arial,sans-serif', color='#334155')
     )
 
     # Etiquetas personalizadas horizontales en la línea de referencia (misma posición que los ticks)
@@ -168,9 +201,9 @@ def _radar(
                 theta=[radial_axis_angle] * len(radial_tickvals),
                 mode='text',
                 text=custom_labels,
-                textfont=dict(size=10, color='#5b6775'),
-                textposition='middle right',  # que el texto arranque pegado a la línea (mismo punto)
-                cliponaxis=False,  # permite que el texto sobresalga si fuese necesario
+                textfont=dict(size=10, color='#64748b'),
+                textposition='middle right',
+                cliponaxis=False,
                 showlegend=False,
                 hoverinfo='skip'
             )
@@ -310,8 +343,9 @@ def register(app):
         radial_ticktext = [fmt_val(tick1), fmt_val(tick2), fmt_val(tick3)]
 
         per_title = _periodo_str_es(periodo_sel)
+        # Títulos internos sin los prefijos "Saldo Inicial" / "Saldo Libros", sólo periodo
         fig_ini = _radar(
-            f"Saldo Inicial · {per_title}",
+            f"{per_title}",
             bancos_cats,
             vals_ini,
             '#1f77b4',
@@ -321,7 +355,7 @@ def register(app):
             radial_ticktext=radial_ticktext,
         )
         fig_lib = _radar(
-            f"Saldo Libros · {per_title}",
+            f"{per_title}",
             bancos_cats,
             vals_lib,
             '#ff7f0e',
