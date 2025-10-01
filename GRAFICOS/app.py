@@ -1,6 +1,7 @@
 from dash import Dash, dcc, html, Input, Output
 import grafic_bancos
 import cuadro_banc
+import bancos_por_empresa
 from grafic_time import layout as layout_time, register as register_time
 from chat_ai import layout as layout_chat, register as register_chat
 
@@ -37,6 +38,7 @@ def main_layout():
         dcc.Tabs(id='tabs', value='tab-grafica-bancos', children=[
             dcc.Tab(label='Gráfica Bancos', value='tab-grafica-bancos'),
             dcc.Tab(label='Cuadro Bancos', value='tab-cuadro-bancos'),
+            dcc.Tab(label='Bancos por Empresa', value='tab-bancos-empresa'),
             dcc.Tab(label='Evolución Tiempo', value='tab-time'),
             dcc.Tab(label='Chat IA', value='tab-chat')
         ]),
@@ -51,6 +53,8 @@ def render_tab(tab_value):
         return grafic_bancos.layout()
     elif tab_value == 'tab-cuadro-bancos':
         return cuadro_banc.layout()
+    elif tab_value == 'tab-bancos-empresa':
+        return bancos_por_empresa.layout()
     elif tab_value == 'tab-time':
         return layout_time()
     elif tab_value == 'tab-chat':
@@ -60,6 +64,7 @@ def render_tab(tab_value):
 # Registrar callbacks de ambos módulos
 grafic_bancos.register(app)
 cuadro_banc.register(app)
+bancos_por_empresa.register(app)
 register_time(app)
 register_chat(app)
 
